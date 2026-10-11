@@ -1,0 +1,28 @@
+# Build outputs
+*.so
+*.o
+*.a
+*.pyd
+*.dll
+*.exe
+gb_engine
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Datasets and generated data
+*.bin
+*.zip
+*.csv
+YearPredictionMSD.txt
+
+# Trained models
+*.gb
+
+# Archives
+*.tar.gz
+*.tgz
