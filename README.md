@@ -1,5 +1,7 @@
 # Out-of-Core Gradient Boosting Engine
 
+[![CI](https://github.com/salexander-git/out-of-core-gradient-boosting/actions/workflows/ci.yml/badge.svg)](https://github.com/salexander-git/out-of-core-gradient-boosting/actions/workflows/ci.yml)
+
 A gradient boosting engine for squared-error regression, written from scratch:
 
 - **C++11 core** (header-only) for quantization, histogram building, split search, tree growth, prediction and model I/O.
@@ -25,7 +27,10 @@ Features are quantized to one byte each (256 codes over a fixed range of [-10, 1
 | [`main.cpp`](main.cpp) | Native inference CLI (`gb_engine`) |
 | [`benchmark_demo.py`](benchmark_demo.py) | Thread-count benchmark harness |
 | [`prepare_california_data.py`](prepare_california_data.py), [`prepare_yearpredictionmsd.py`](prepare_yearpredictionmsd.py) | Dataset preparation |
-| [`results/`](results) | The stored training logs behind the result below |
+| [`CMakeLists.txt`](CMakeLists.txt) | Builds `gb_core` and `gb_engine` |
+| [`tests/`](tests) | pytest suite; fixtures are generated at test time |
+| [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | CI: build with CMake and run pytest |
+| [`results/`](results) | The stored training logs behind the results below |
 
 ## Design decisions
 
@@ -74,7 +79,7 @@ Prediction is `base_score + learning_rate · Σ tree(x)` ([`GradientBoostingMode
 
 ## Result
 
-The project has one stored result: California Housing, 20,640 rows × 8 features, 20 trees, depth 6, learning rate 0.1 ([`results/bench_threads_1.log:10`](results/bench_threads_1.log#L10), [`:17`](results/bench_threads_1.log#L17)).
+The stored result is California Housing, 20,640 rows × 8 features, 20 trees, depth 6, learning rate 0.1 ([`results/bench_threads_1.log:10`](results/bench_threads_1.log#L10), [`:17`](results/bench_threads_1.log#L17)).
 
 | | Training RMSE |
 |---|---|
@@ -83,14 +88,25 @@ The project has one stored result: California Housing, 20,640 rows × 8 features
 
 Total training time was 0.99 s ([`:45`](results/bench_threads_1.log#L45)). The per-round RMSE is at [`:21-42`](results/bench_threads_1.log#L21-L42). This is a **training-set** fit; see Limitations.
 
+**Multi-chunk run.** The same job was rerun with 1,000-row chunks, so each pass streams the data in 21 chunks ([`results/california_chunk1000_threads1.log:1-4`](results/california_chunk1000_threads1.log#L1-L4), [`:22`](results/california_chunk1000_threads1.log#L22)). The log header records the commit, chunk size, compiler and exact command. Every per-round RMSE matches the single-chunk log to six decimals ([`:27-46`](results/california_chunk1000_threads1.log#L27-L46)), and the final training RMSE is again 0.598397 ([`:50`](results/california_chunk1000_threads1.log#L50)). The saved models are close but not bit-identical; see Limitations.
+
 ## Build
 
-The project has no build file. Build it with the two commands below. They assume Linux or WSL, g++ with OpenMP, and Python 3 with the packages the code imports ([`main.py:6-8`](main.py#L6-L8), [`prepare_california_data.py:1-3`](prepare_california_data.py#L1-L3)).
+You need Linux or WSL, g++ with OpenMP, and Python 3 with the packages the code imports ([`main.py:6-8`](main.py#L6-L8), [`prepare_california_data.py:1-3`](prepare_california_data.py#L1-L3)).
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install numpy psutil pybind11 scikit-learn
+pip install cmake numpy psutil pybind11 scikit-learn pytest
 
+cmake -S . -B build -DPython_EXECUTABLE="$(which python)"
+cmake --build build -j
+```
+
+[`CMakeLists.txt`](CMakeLists.txt) builds the extension `gb_core` and the CLI `gb_engine` into `build/`, both as C++11 with `-Wall` and OpenMP ([`:4`](CMakeLists.txt#L4), [`:21-33`](CMakeLists.txt#L21-L33)). It finds pip's pybind11 through the Python interpreter ([`:13-20`](CMakeLists.txt#L13-L20)). For the commands under Run, put the build directory on `PYTHONPATH` (`export PYTHONPATH=build`) and call `build/gb_engine`.
+
+**Alternative: manual `g++`.** These commands build the same two targets in the repository root:
+
+```bash
 # Python extension: gb_core
 g++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp $(python -m pybind11 --includes) \
     engine_wrapper.cpp -o gb_core$(python -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
@@ -98,6 +114,28 @@ g++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp $(python -m pybind11 --includes)
 # Native inference CLI: gb_engine
 g++ -O3 -Wall -std=c++11 -fopenmp main.cpp -o gb_engine
 ```
+
+## Test
+
+```bash
+python -m pytest -v        # after the CMake build; set GB_BUILD_DIR to use another build directory
+```
+
+The tests import `gb_core` from `build/` and run `build/gb_engine` ([`tests/conftest.py:19-22`](tests/conftest.py#L19-L22)). Every fixture is generated at test time ([`tests/conftest.py:84-99`](tests/conftest.py#L84-L99)). California Housing is downloaded by scikit-learn through the repo's own prep script ([`tests/conftest.py:102-116`](tests/conftest.py#L102-L116)) and is never committed. CI runs the same build and suite on Ubuntu 24.04 with gcc and Python 3.12 ([`.github/workflows/ci.yml:9-39`](.github/workflows/ci.yml#L9-L39)).
+
+| Area | Tests |
+|---|---|
+| **Chunk equivalence** | California with 1 thread, single chunk vs 1,000-row chunks: final RMSE, every tree's splits and leaf values, and the saved bytes ([`test_chunk_equivalence.py:65-81`](tests/test_chunk_equivalence.py#L65-L81)). With 4 threads, predictions are compared within a stated tolerance; the comment explains why exact equality isn't expected ([`:86-102`](tests/test_chunk_equivalence.py#L86-L102), [`:124-162`](tests/test_chunk_equivalence.py#L124-L162)). |
+| **Model I/O** | Save/load round trip with identical predictions and byte-identical re-save ([`test_model_io.py:32-53`](tests/test_model_io.py#L32-L53)) |
+| **Python vs CLI** | Identical predictions from the shell's path and `gb_engine` on the same model ([`test_model_io.py:69-99`](tests/test_model_io.py#L69-L99)) |
+| **Rejection of bad input** | Non-finite values, truncated feature files, and wrong-magic, random, truncated or structurally corrupt model files ([`test_validation.py`](tests/test_validation.py)) |
+
+**Known failing tests.** Three tests fail against the current engine and are deliberately left strict:
+
+- **Chunk equivalence (two tests):** the exact 1-thread tests fail because chunking changes the float32 summation order ([`test_chunk_equivalence.py:57-64`](tests/test_chunk_equivalence.py#L57-L64)).
+- **Bin edge (one test):** the Python and CLI paths disagree on one input ([`test_model_io.py:86-89`](tests/test_model_io.py#L86-L89)).
+
+Both are listed under Limitations.
 
 ## Run
 
@@ -123,12 +161,14 @@ python main.py --cmd "load_train california_features.bin california_labels.bin 8
 ## Limitations
 
 - **There is no held-out evaluation.** Every reported RMSE is training RMSE: it is computed against the training labels ([`main.py:427`](main.py#L427), [`:440`](main.py#L440)). `prepare_yearpredictionmsd.py` writes test-split files ([`:123-125`](prepare_yearpredictionmsd.py#L123-L125)), but no code reads them.
-- **There is no automated test that runs against the final code.** This repository contains no tests.
-- **There is no build system.** The only build instructions are the manual `g++` commands above.
 - **Thread scaling measured flat.** Total training time on the California run was **0.99 / 0.98 / 0.99 / 1.04 s at 1 / 2 / 4 / 8 threads** ([`results/bench_threads_{1,2,4,8}.log:45`](results)), with an identical final RMSE in all four runs ([`:46`](results/bench_threads_1.log#L46)). Two things limit what these logs can show:
   - Under the work-size heuristic in the final code, this workload (20,640 × 8 = 165,120 cells) runs on one thread whatever the setting ([`Tree.hpp:42`](Tree.hpp#L42)).
   - The logs come from an earlier `main.py`: their config line ([`results/bench_threads_1.log:18`](results/bench_threads_1.log#L18)) lacks the `features_mode` field the final code prints ([`main.py:81-82`](main.py#L81-L82)). Which thread heuristic they ran under is not recorded.
-- **The stored run used a single chunk.** The default chunk is 1,000,000 rows ([`main.py:37`](main.py#L37), [`results/bench_threads_1.log:18`](results/bench_threads_1.log#L18)), larger than the 20,640-row dataset. Multi-chunk streaming needs `set_chunk_rows`.
+- **Chunk size changes the model in its last bits.** Each chunk is summed into a fresh float32 histogram, and that partial sum is then added into the level's running total ([`Tree.hpp:166-170`](Tree.hpp#L166-L170), [`:240-242`](Tree.hpp#L240-L242)). A different chunk size therefore brackets the float sums differently:
+  - On California with 1,000-row chunks, leaf values differ by a few ulps from the first tree, and one split choice differs ([`tests/test_chunk_equivalence.py:57-64`](tests/test_chunk_equivalence.py#L57-L64)).
+  - Training RMSE is unaffected at six decimals ([`results/california_chunk1000_threads1.log:27-50`](results/california_chunk1000_threads1.log#L27-L50)).
+  - The exact-equivalence tests fail ([`:70-81`](tests/test_chunk_equivalence.py#L70-L81)).
+- **Python and CLI predictions can disagree at a bin edge.** The shell parses and bins inputs in float64 ([`main.py:520`](main.py#L520), [`:56-68`](main.py#L56-L68)), and the CLI does both in float32 ([`main.cpp:40-58`](main.cpp#L40-L58)). An input within float32 rounding of a bin boundary can land in different bins: `3.333333` goes to bin 169 in Python and bin 170 in the CLI. When a tree splits at that boundary, the two paths predict differently ([`tests/test_model_io.py:81-99`](tests/test_model_io.py#L81-L99)).
 - **Validation sits in the prediction hot path.** `predict_chunk` validates the tree once and then calls `predict`, which validates it again for every row ([`Tree.hpp:420`](Tree.hpp#L420), [`:440-444`](Tree.hpp#L440-L444)).
 - **The model format is not portable.** It writes native-endian integers, `size_t` counts and raw `TreeNode` struct bytes ([`GradientBoostingModel.hpp:149`](GradientBoostingModel.hpp#L149), [`:160`](GradientBoostingModel.hpp#L160), [`:169`](GradientBoostingModel.hpp#L169)).
 - **Input handling is minimal.**

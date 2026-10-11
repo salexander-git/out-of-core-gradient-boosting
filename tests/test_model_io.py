@@ -82,6 +82,11 @@ def test_python_and_cli_predict_identically_at_a_bin_edge(tmp_path):
     # One tree, one split: feature 0 <= bin 169 goes left (-1), else right (+1).
     # The input 3.333333 sits next to the 169/170 bin edge: (3.333333 + 10) * 12.75
     # = 169.99999575 in exact arithmetic.
+    #
+    # Status when written: FAILS against the current code, deliberately left strict.
+    # The shell parses and bins in float64 (main.py:520, main.py:56-68): 169.9999957 -> bin 169.
+    # The CLI parses with std::stof and bins in float32 (main.cpp:40-58): the nearest float
+    # to 3.333333 maps to 170.0 -> bin 170. Same model, same input, different leaf.
     nodes = [(False, 0.0, 0, 169, 1, 2),
              (True, -1.0, -1, 0, -1, -1),
              (True, 1.0, -1, 0, -1, -1)]

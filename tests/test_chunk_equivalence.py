@@ -54,6 +54,14 @@ def _first_difference(trees_a, trees_b):
     return None
 
 
+# Status when written: the RMSE test passes; the two exact tests FAIL against the current
+# engine, and are deliberately left strict. Mechanism: add_chunk sums each chunk into a
+# fresh per-chunk float32 histogram (Tree.hpp:166-170) and then adds that partial sum into
+# the level's running histogram (Tree.hpp:240-242). One chunk gives one long running sum;
+# many chunks give a sum of partial sums. Float addition is not associative, so the
+# histogram totals differ in their last bits, leaf values differ by a few ulps from tree 0,
+# and on California one split choice differs by tree 13 (0-indexed). Final RMSE, and every
+# per-round RMSE at 6 decimals, still match (results/california_chunk1000_threads1.log).
 def test_threads1_final_rmse_matches(california_t1):
     (_, rmse_single), (_, rmse_small) = california_t1
     assert rmse_single == rmse_small

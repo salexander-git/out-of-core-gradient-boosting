@@ -1,0 +1,52 @@
+# commit: 65a361eda3b1f2106be84ac28794518987c26ca3
+# chunk_rows: 1000 (California has 20,640 rows -> 21 chunks per pass)
+# build: cmake -S . -B build && cmake --build build (g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0)
+# command: OMP_NUM_THREADS=1 PYTHONPATH=build python main.py --cmd "load_train california_features.bin california_labels.bin 8" --cmd "set_verbose_levels off" --cmd "set_chunk_rows 1000" --cmd "train 20 6 0.1 1.0"
+(gb-core) load_train california_features.bin california_labels.bin 8
+[SUCCESS] Labeled training data loaded.
+          Features: 'california_features.bin'
+          Labels:   'california_labels.bin'
+          Rows: 20,640 | Features: 8
+          Mode: float32
+          Base Score (mean label): 2.068558
+          Baseline RMSE: 1.153928
+          Memory After Load: 30.11 MB
+(gb-core) set_verbose_levels off
+[SUCCESS] verbose_levels set to False
+(gb-core) set_chunk_rows 1000
+[SUCCESS] chunk_size_rows set to 1000
+(gb-core) train 20 6 0.1 1.0
+
+=== TRAINING CONFIG ===
+rows=20,640  features=8  rounds=20  depth=6  lr=0.1  min_child_weight=1.0
+chunk_rows=1,000  omp_threads=1  features_mode=float32
+base_score=2.068558  initial_rmse=1.153928  mem_before=30.11 MB
+
+round  rmse         time(s)    mem(MB)    trees     
+------------------------------------------------------
+1      1.084117     0.04       30.22      1         
+2      1.023656     0.04       30.22      2         
+3      0.971109     0.04       30.22      3         
+4      0.924001     0.04       30.22      4         
+5      0.879852     0.04       30.22      5         
+6      0.842167     0.04       30.22      6         
+7      0.809244     0.04       30.22      7         
+8      0.779665     0.04       30.22      8         
+9      0.751350     0.04       30.22      9         
+10     0.727839     0.04       30.22      10        
+11     0.703863     0.04       30.22      11        
+12     0.687254     0.04       30.22      12        
+13     0.673593     0.04       30.22      13        
+14     0.656688     0.04       30.22      14        
+15     0.646203     0.04       30.22      15        
+16     0.633192     0.04       30.22      16        
+17     0.624374     0.04       30.22      17        
+18     0.616297     0.04       30.22      18        
+19     0.607330     0.04       30.22      19        
+20     0.598397     0.04       30.22      20        
+
+=== TRAINING SUMMARY ===
+total_time=0.79s
+final_rmse=0.598397
+num_trees=20
+memory_after=30.22 MB
