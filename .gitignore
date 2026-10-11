@@ -26,3 +26,6 @@ YearPredictionMSD.txt
 # Archives
 *.tar.gz
 *.tgz
+
+# Test caches
+.pytest_cache/
