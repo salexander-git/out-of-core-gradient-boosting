@@ -1,0 +1,6 @@
+cmake
+numpy
+psutil
+pybind11
+pytest
+scikit-learn

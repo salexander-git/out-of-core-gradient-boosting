@@ -96,7 +96,7 @@ You need Linux or WSL, g++ with OpenMP, and Python 3 with the packages the code 
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
-pip install cmake numpy psutil pybind11 scikit-learn pytest
+pip install -r requirements-dev.txt   # cmake, numpy, psutil, pybind11, pytest, scikit-learn
 
 cmake -S . -B build -DPython_EXECUTABLE="$(which python)"
 cmake --build build -j
