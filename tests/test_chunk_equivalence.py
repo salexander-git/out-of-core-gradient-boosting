@@ -92,11 +92,12 @@ def test_threads1_saved_models_byte_identical(california_t1):
 # what the model predicts, not its bytes.
 #
 # Tolerances: every prediction within 1e-4 absolute, final RMSE within 1e-5.
-# Measured when this test was written (g++ 13.3, x86-64): the largest prediction
-# difference was 9.5e-7 on California and 1.9e-6 on the synthetic set, and printed
-# RMSE differed by at most 1e-6. Both are a few float32 ulps of predictions of
-# magnitude 1-30, so the bounds leave ~50x headroom for compiler and hardware
-# differences while staying far below any change a real modelling error would cause.
+# Measured on the synthetic set (g++ 13.3, x86-64): the largest prediction difference
+# between 4 threads and the 1-thread reference was 1.9e-6, and printed RMSE differed by
+# at most 1e-6. (California always runs on one thread, see below, so it now matches
+# exactly.) 1.9e-6 is a few float32 ulps of predictions of magnitude 1-30, so the bounds
+# leave ~50x headroom for compiler and hardware differences while staying far below any
+# change a real modelling error would cause.
 PRED_ATOL = 1e-4
 RMSE_ATOL = 1e-5
 
