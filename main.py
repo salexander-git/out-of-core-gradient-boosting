@@ -54,16 +54,21 @@ class GBEngineShell(cmd.Cmd):
         return float(np.sqrt(np.mean(diff * diff)))
 
     def _quantize_row(self, raw_vals, num_features):
-        f_min, f_max = -10.0, 10.0
-        scale = 255.0 / (f_max - f_min)
+        # Bin in float32, exactly as training (OutOfCoreQuantizer.hpp:20-31) and the native
+        # CLI (main.cpp:40-58) do. Float64 arithmetic here could pick the neighbouring bin
+        # for a value within float32 rounding of a bin edge.
+        f_min, f_max = np.float32(-10.0), np.float32(10.0)
+        scale = np.float32(255.0) / (f_max - f_min)
 
         binned_vals = np.empty(num_features, dtype=np.uint8)
         for i, val in enumerate(raw_vals):
-            if not math.isfinite(val):
+            with np.errstate(over="ignore"):
+                val32 = np.float32(val)
+            if not math.isfinite(val) or not np.isfinite(val32):
                 raise ValueError(f"feature at position {i} is not finite")
-            clamped = max(f_min, min(f_max, val))
+            clamped = max(f_min, min(f_max, val32))
             mapped = (clamped - f_min) * scale
-            mapped = max(0.0, min(255.0, mapped))
+            mapped = max(np.float32(0.0), min(np.float32(255.0), mapped))
             binned_vals[i] = int(mapped)
         return binned_vals
 

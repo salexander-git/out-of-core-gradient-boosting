@@ -54,7 +54,7 @@ def test_save_load_round_trip(trained):
 
 
 def _python_prediction(model, values):
-    """The shell's `predict` path: _quantize_row (main.py:56-68), then model.predict."""
+    """The shell's `predict` path: _quantize_row (main.py:56-73), then model.predict."""
     bins = main.GBEngineShell()._quantize_row([float(v) for v in values], len(values))
     return model.predict(bins)
 
@@ -78,22 +78,64 @@ def test_python_and_cli_predict_identically(trained):
         assert _cli_prediction(path, values) == f"{_python_prediction(shell.model, values):g}", values
 
 
-def test_python_and_cli_predict_identically_at_a_bin_edge(tmp_path):
-    # One tree, one split: feature 0 <= bin 169 goes left (-1), else right (+1).
-    # The input 3.333333 sits next to the 169/170 bin edge: (3.333333 + 10) * 12.75
-    # = 169.99999575 in exact arithmetic.
-    #
-    # Status when written: FAILS against the current code, deliberately left strict.
-    # The shell parses and bins in float64 (main.py:520, main.py:56-68): 169.9999957 -> bin 169.
-    # The CLI parses with std::stof and bins in float32 (main.cpp:40-58): the nearest float
-    # to 3.333333 maps to 170.0 -> bin 170. Same model, same input, different leaf.
-    nodes = [(False, 0.0, 0, 169, 1, 2),
+def _split_model(tmp_path, split_bin):
+    """One tree, one split on feature 0: bin <= split_bin -> -1, else +1."""
+    nodes = [(False, 0.0, 0, split_bin, 1, 2),
              (True, -1.0, -1, 0, -1, -1),
              (True, 1.0, -1, 0, -1, -1)]
-    path = tmp_path / "edge.gb"
+    path = tmp_path / f"split{split_bin}.gb"
     path.write_bytes(build_model_bytes(1, [nodes], learning_rate=1.0, base_score=0.0))
     model = gb_core.GradientBoostingModel(1)
     model.load_model(str(path))
+    return path, model
 
+
+def _training_bins(tmp_path, strings):
+    """Reference bins: the training quantizer (OutOfCoreQuantizer, as used at main.py:186)."""
+    path = tmp_path / "reference_values.bin"
+    np.array([float(s) for s in strings], dtype=np.float32).tofile(path)
+    q = gb_core.OutOfCoreQuantizer(str(path), len(strings), -10.0, 10.0)
+    out = np.empty(len(strings), dtype=np.uint8)
+    assert q.process_next_chunk_into(out, 0) == len(strings)
+    return out
+
+
+def test_python_and_cli_predict_identically_at_a_bin_edge(tmp_path):
+    # Regression test for a bug this suite found. 3.333333 sits next to the 169/170 bin
+    # edge: (3.333333 + 10) * 12.75 = 169.99999575 exactly, but the nearest float32 to
+    # 3.333333 maps to 170.0. Training and the CLI bin in float32 and get 170; the shell
+    # used to bin in float64, got 169, and predicted -1 where the CLI predicted +1.
     values = ["3.333333"]
-    assert _cli_prediction(path, values) == f"{_python_prediction(model, values):g}"
+    assert _training_bins(tmp_path, values)[0] == 170
+    assert main.GBEngineShell()._quantize_row([3.333333], 1)[0] == 170
+    path, model = _split_model(tmp_path, 169)
+    assert _cli_prediction(path, values) == f"{_python_prediction(model, values):g}" == "1"
+
+
+def test_python_bins_match_training_at_7_decimals(tmp_path):
+    rng = np.random.default_rng(2024)
+    uniform = rng.uniform(-10.0, 10.0, 20_000)
+    # Values within a few 1e-7 of a bin edge, where float64 and float32 binning can disagree.
+    edges = rng.integers(1, 256, 20_000) / 12.75 - 10.0
+    near_edge = edges + rng.integers(-5, 6, 20_000) * 1e-7
+    strings = [f"{v:.7f}" for v in np.concatenate([uniform, near_edge])]
+    values = [float(s) for s in strings]
+
+    reference = _training_bins(tmp_path, strings)
+    python_bins = main.GBEngineShell()._quantize_row(values, len(values))
+    np.testing.assert_array_equal(python_bins, reference)
+
+    # The inputs have teeth: float64 binning (the old shell path) disagrees on some of them.
+    float64_bins = np.clip((np.clip(values, -10.0, 10.0) + 10.0) * 12.75, 0, 255).astype(np.uint8)
+    disputed = np.nonzero(float64_bins != reference)[0]
+    assert len(disputed) > 0
+
+    # On those inputs the CLI lands in the training bin too, and agrees with Python:
+    # a split at b-1 must send bin b right (+1), a split at b must send it left (-1).
+    for i in disputed[:20]:
+        b, value = int(reference[i]), [strings[i]]
+        for split_bin, expected in ((b - 1, "1"), (b, "-1")):
+            if not 0 <= split_bin <= 255:
+                continue
+            path, model = _split_model(tmp_path, split_bin)
+            assert _cli_prediction(path, value) == f"{_python_prediction(model, value):g}" == expected, value
