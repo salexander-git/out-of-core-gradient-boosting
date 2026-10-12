@@ -1,0 +1,57 @@
+# commit: cf26078f4e7321cfe4bb3b6d55c1a1e2ebb5fbe2
+# chunk_rows: 1000 (California has 20,640 rows -> 21 chunks per pass)
+# build: cmake -S . -B build && cmake --build build (g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0)
+# command: OMP_NUM_THREADS=1 PYTHONPATH=build python main.py --cmd "load_train california_features.bin california_labels.bin 8" --cmd "set_verbose_levels off" --cmd "set_chunk_rows 1000" --cmd "train 20 6 0.1 1.0" --cmd "save chunk1000.gb"
+(gb-core) load_train california_features.bin california_labels.bin 8
+[SUCCESS] Labeled training data loaded.
+          Features: 'california_features.bin'
+          Labels:   'california_labels.bin'
+          Rows: 20,640 | Features: 8
+          Mode: float32
+          Base Score (mean label): 2.068558
+          Baseline RMSE: 1.153928
+          Memory After Load: 30.25 MB
+(gb-core) set_verbose_levels off
+[SUCCESS] verbose_levels set to False
+(gb-core) set_chunk_rows 1000
+[SUCCESS] chunk_size_rows set to 1000
+(gb-core) train 20 6 0.1 1.0
+
+=== TRAINING CONFIG ===
+rows=20,640  features=8  rounds=20  depth=6  lr=0.1  min_child_weight=1.0
+chunk_rows=1,000  omp_threads=1  features_mode=float32
+base_score=2.068558  initial_rmse=1.153928  mem_before=30.25 MB
+
+round  rmse         time(s)    mem(MB)    trees     
+------------------------------------------------------
+1      1.084117     0.01       30.38      1         
+2      1.023656     0.01       30.38      2         
+3      0.971109     0.01       30.38      3         
+4      0.924001     0.01       30.38      4         
+5      0.879852     0.01       30.38      5         
+6      0.842167     0.02       30.38      6         
+7      0.809244     0.02       30.38      7         
+8      0.779665     0.01       30.38      8         
+9      0.751350     0.01       30.38      9         
+10     0.727839     0.01       30.39      10        
+11     0.703863     0.01       30.39      11        
+12     0.687254     0.01       30.39      12        
+13     0.673593     0.01       30.39      13        
+14     0.656688     0.02       30.39      14        
+15     0.646203     0.01       30.39      15        
+16     0.633192     0.01       30.39      16        
+17     0.624374     0.01       30.39      17        
+18     0.616297     0.02       30.39      18        
+19     0.607330     0.01       30.39      19        
+20     0.598397     0.01       30.39      20        
+
+=== TRAINING SUMMARY ===
+total_time=0.29s
+final_rmse=0.598397
+num_trees=20
+memory_after=30.39 MB
+(gb-core) save chunk1000.gb
+[SUCCESS] Ensemble model serialized to 'chunk1000.gb'.
+          Trees: 20
+# sha256 chunk1000.gb (this run):                    8c3c81344ca3a8ae05b81e1c1b3e593f1510204bb6b4d0d320cd637cac30a31f
+# sha256 single_chunk.gb (same job, chunk_rows 1000000): 8c3c81344ca3a8ae05b81e1c1b3e593f1510204bb6b4d0d320cd637cac30a31f

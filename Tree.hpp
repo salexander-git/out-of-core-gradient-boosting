@@ -163,15 +163,9 @@ public:
         const size_t num_nodes = nodes.size();
         const int num_threads = choose_effective_threads(num_rows);
 
-        std::vector<ThreadHistogramState> thread_states;
-        thread_states.reserve(static_cast<size_t>(num_threads));
-        for (int t = 0; t < num_threads; ++t) {
-            thread_states.emplace_back(num_nodes, num_features);
-        }
-
         if (num_threads == 1) {
-            auto& local_state = thread_states[0];
-
+            // Accumulate straight into the level's running histograms. The float sums then
+            // follow row order alone, so splitting the rows into chunks cannot change them.
             for (size_t i = 0; i < num_rows; ++i) {
                 int curr_idx = 0;
 
@@ -184,7 +178,7 @@ public:
                     curr_idx = (feature_val <= curr.split_bin) ? curr.left_child_idx : curr.right_child_idx;
                 }
 
-                auto& feature_blocks = local_state.per_node[static_cast<size_t>(curr_idx)].per_feature;
+                auto& feature_blocks = active_histograms[static_cast<size_t>(curr_idx)];
                 const float g = gradients[i];
                 const float h = hessians[i];
 
@@ -193,7 +187,16 @@ public:
                     feature_blocks[static_cast<size_t>(f)].add_bin(bin, g, h);
                 }
             }
-        } else {
+            return;
+        }
+
+        std::vector<ThreadHistogramState> thread_states;
+        thread_states.reserve(static_cast<size_t>(num_threads));
+        for (int t = 0; t < num_threads; ++t) {
+            thread_states.emplace_back(num_nodes, num_features);
+        }
+
+        {
 #ifdef _OPENMP
 #pragma omp parallel num_threads(num_threads)
 #endif
@@ -233,7 +236,7 @@ public:
 
         const size_t total_pairs = num_nodes * static_cast<size_t>(num_features);
 
-        if (num_threads == 1 || total_pairs < 64) {
+        if (total_pairs < 64) {
             for (size_t node_idx = 0; node_idx < num_nodes; ++node_idx) {
                 for (int f = 0; f < num_features; ++f) {
                     for (int t = 0; t < num_threads; ++t) {
