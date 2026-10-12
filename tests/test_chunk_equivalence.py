@@ -54,14 +54,13 @@ def _first_difference(trees_a, trees_b):
     return None
 
 
-# Status when written: the RMSE test passes; the two exact tests FAIL against the current
-# engine, and are deliberately left strict. Mechanism: add_chunk sums each chunk into a
-# fresh per-chunk float32 histogram (Tree.hpp:166-170) and then adds that partial sum into
-# the level's running histogram (Tree.hpp:240-242). One chunk gives one long running sum;
-# many chunks give a sum of partial sums. Float addition is not associative, so the
-# histogram totals differ in their last bits, leaf values differ by a few ulps from tree 0,
-# and on California one split choice differs by tree 13 (0-indexed). Final RMSE, and every
-# per-round RMSE at 6 decimals, still match (results/california_chunk1000_threads1.log).
+# Regression tests for a bug these tests found. add_chunk used to sum each chunk into a
+# fresh per-chunk float32 histogram and then add that partial sum into the level's running
+# histogram. One chunk gave one long running sum, many chunks a sum of partial sums; float
+# addition is not associative, so leaf values differed by a few ulps from tree 0 and one
+# California split differed by tree 13 (0-indexed). The single-thread path now adds every
+# row straight into the running histogram (Tree.hpp:166-191), so the sums depend on row
+# order only and any chunk size gives a byte-identical model.
 def test_threads1_final_rmse_matches(california_t1):
     (_, rmse_single), (_, rmse_small) = california_t1
     assert rmse_single == rmse_small
@@ -84,8 +83,8 @@ def test_threads1_saved_models_byte_identical(california_t1):
 # --- Multi-threaded runs: compared within a tolerance -------------------------------
 #
 # Exact equality is not expected here. Each OpenMP thread sums gradients for its own
-# static block of rows into private float32 histograms (Tree.hpp:198-230), and the
-# per-thread totals are then added together in thread order (Tree.hpp:234-259).
+# static block of rows into private float32 histograms (Tree.hpp:193-235), and the
+# per-thread totals are then added together in thread order (Tree.hpp:237-262).
 # Float addition is not associative, so the bracketing of the sum (and with it the
 # last bits of every histogram total) depends on how many threads ran and where the
 # chunk boundaries fall. Those last-bit differences move leaf values by a few float32
